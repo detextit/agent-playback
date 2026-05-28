@@ -1,0 +1,21 @@
+{
+  "name": "agent-playback",
+  "version": "0.1.0",
+  "description": "Turn long-running agent traces into personalized local audio briefings.",
+  "author": {
+    "name": "detextit"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Agent Playback",
+    "shortDescription": "Play back what your coding agent did.",
+    "longDescription": "Agent Playback creates a personalized, lively local audio recap from a long-running agent trace, coding session, or conversation log. It is built for users who want a NotebookLM-style spoken briefing instead of rereading a long chat.",
+    "developerName": "detextit",
+    "category": "Productivity",
+    "capabilities": [
+      "audio",
+      "summarization"
+    ],
+    "defaultPrompt": "Create an Agent Playback audio briefing for this agent trace."
+  }
+}
