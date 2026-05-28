@@ -30,6 +30,19 @@ Default output files:
 
 ## Quick Start
 
+Install from GitHub with Codex Marketplace tooling:
+
+```bash
+npx codex-marketplace add detextit/agent-playback --plugin
+```
+
+Or clone the repo and run it locally:
+
+```bash
+git clone https://github.com/detextit/agent-playback.git
+cd agent-playback
+```
+
 Prerequisites:
 
 - `OPENAI_API_KEY`
