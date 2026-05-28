@@ -5,7 +5,7 @@ description: Create a personalized local audio briefing that explains an agent's
 
 # Agent Trace Audio
 
-Use this skill to turn a long-running agent trace into a local audio file the user can play. The result should feel like a short, polished tech podcast segment: fun, attractive, concrete, and faithful to what happened.
+Use this skill to turn a long-running agent trace into a local audio file the user can play. The result should feel like a short standup checkpoint: one voice asks focused questions, another explains the work done, and the conversation stays concrete and faithful to what happened.
 
 ## Requirements
 
@@ -62,15 +62,15 @@ For long traces, prefer compact mode. It keeps the opening goal, salient events 
 
 ## Briefing Shape
 
-Ask for a spoken briefing that feels personal, lively, and operational, not like a generic meeting summary. The best output:
+Ask for a spoken briefing that feels personal, lively, and operational, not like a generic meeting summary or podcast segment. The best output:
 
-- starts with a strong hook about what happened
+- starts with a direct question about what happened
 - names the user's goal and the project
 - explains the important decisions and why they were made
 - separates completed work from attempted or blocked work
 - mentions verification, test results, and residual risk
 - avoids dumping low-level logs unless they explain an outcome
-- uses a tasteful two-speaker rhythm with crisp handoffs
+- uses a standup rhythm: short questions from the lead, substantive answers from the engineer
 - ends with concrete next steps or a satisfying wrap-up
 
 ## Useful Commands

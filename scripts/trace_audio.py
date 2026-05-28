@@ -250,7 +250,7 @@ Create a concise audio briefing script for an agent working trace.
 Listener: {args.listener}
 Project: {args.project}
 Target duration: {args.duration_seconds} seconds
-Mode: two-speaker conversational briefing
+Mode: standup-style question-and-answer briefing
 {pronunciation}
 
 Return only JSON with this shape:
@@ -268,15 +268,19 @@ Return only JSON with this shape:
 
 Rules:
 - Use at most {args.max_segments} briefing segments total.
-- Open with a sharp, inviting hook about the work. Do not start with "this is AI-generated" or any compliance-style disclaimer.
+- Treat `host` as the standup lead. The host asks short, practical questions and does not summarize the work at length.
+- Treat `analyst` as the engineer who did the work. The analyst gives most of the substance: what was done, what changed, verification, and remaining risk.
+- Aim for roughly 65-80 percent of spoken words from the analyst and 20-35 percent from the host.
+- Open with a direct standup question about the work. Do not start with "this is AI-generated" or any compliance-style disclaimer.
 - Explain what the user asked for, what the agent did, what changed, what was tested, and what remains.
 - Be faithful to the trace. Do not invent completed work, files, test results, or external facts.
 - Make it personal to the listener and project.
-- Make the format fun and attractive: crisp podcast energy, tasteful back-and-forth, vivid phrasing, and a satisfying wrap-up. Avoid being goofy, theatrical, or salesy.
+- Make the format useful and attractive as a standup checkpoint: crisp questions, concrete answers, no podcast banter, no host monologues, no theatrical setup.
 - The Listener field is the only approved spoken listener label. If Listener is "the user" or "you", do not infer or say a personal name from the trace.
 - Use natural speech. Avoid markdown, bullets, code fences, and long file dumps in spoken lines.
 - Include concrete file names and commands only when they matter to understanding the outcome.
 - Do not infer that multiple eval iterations ran from a command's `--iterations` limit. Only state an iteration count when the trace reports the actual result.
+- Call out uncertainty, failed checks, missing verification, or setup boundaries when the trace shows them.
 - End with next steps or residual risk.
 - Keep the combined script close to the target duration.
 {feedback_block}
@@ -295,7 +299,8 @@ def draft_script(args: argparse.Namespace, trace: str, feedback: str = "") -> di
             "instructions": (
                 "You turn coding-agent work traces into accurate, compact, spoken audio "
                 "briefings. You optimize for faithfulness, listener usefulness, and "
-                "a lively, polished, podcast-like delivery."
+                "a standup-style exchange where one voice asks focused questions and "
+                "the other explains the work that was done."
             ),
             "input": build_draft_prompt(args, trace, feedback),
             "temperature": 0.4,
@@ -334,12 +339,12 @@ def instructions_for_segment(segment: dict[str, str], args: argparse.Namespace) 
         )
     if segment["speaker"] == "host":
         return (
-            "Sound like a polished tech podcast host: bright, warm, curious, and crisp. "
-            "Keep the energy attractive and modern without sounding like an ad." + pronunciation
+            "Sound like a practical standup lead: concise, curious, and direct. "
+            "Ask focused questions; do not turn the segment into a podcast monologue." + pronunciation
         )
     return (
-        "Sound like a sharp senior engineer co-host: concrete, lightly witty, and easy "
-        "to follow. Bring momentum, but keep the facts precise." + pronunciation
+        "Sound like the engineer who did the work: concrete, calm, and precise. "
+        "Explain what changed, what was verified, and where the boundaries are." + pronunciation
     )
 
 
@@ -534,6 +539,18 @@ def transcribe_audio(args: argparse.Namespace, audio_path: Path) -> str:
     ).strip()
 
 
+def infer_eval_pass(scores: dict[str, Any]) -> bool:
+    required = (
+        "faithfulness",
+        "coverage",
+        "standup_format",
+        "boundary_awareness",
+    )
+    if not all(scores.get(name, 0) >= 4 for name in required):
+        return False
+    return all(value >= 3 for value in scores.values() if isinstance(value, (int, float)))
+
+
 def judge_audio(args: argparse.Namespace, trace: str, script: dict[str, Any], transcript: str) -> dict[str, Any]:
     api_key = require_api_key()
     prompt = f"""
@@ -550,20 +567,28 @@ Return only JSON:
     "coverage": 1,
     "clarity": 1,
     "personalization": 1,
-    "actionability": 1
+    "actionability": 1,
+    "standup_format": 1,
+    "boundary_awareness": 1
   }},
   "missing_or_wrong": ["specific issues"],
   "best_parts": ["specific strengths"],
+  "boundary_checks": ["specific edge cases the audio handled or failed to handle"],
   "prompt_adjustments": ["instructions to improve the next iteration"]
 }}
 
 Scoring:
 - 5 is excellent, 4 is good, 3 is acceptable but needs revision, 1-2 fails.
-- Fail if faithfulness is below 4 or coverage is below 4.
+- Fail if faithfulness, coverage, standup_format, or boundary_awareness is below 4.
+- Fail if any other score is below 3.
 - Coverage should reward goal, actions, changes, verification, blockers, and next steps.
 - Faithfulness should penalize invented files, tests, claims, or outcomes.
+- Standup format should reward a clear split where one voice asks short questions and the other voice reports the work done. Penalize podcast-style banter, co-host riffing, long host summaries, or a monologue with speaker labels.
+- Boundary awareness should reward explicit treatment of failed checks, untested paths, residual risks, missing evidence, and current setup limits. Penalize confident wrap-ups that hide uncertainty.
 - If the transcript appears to omit or substitute the expected listener name, mention it under missing_or_wrong and cap personalization at 4 unless the rest of the personalization is excellent.
 - Compare iteration counts exactly. Fail faithfulness if the audio says a different actual iteration count than the trace or eval artifacts report.
+- If the source trace includes a failure, blocker, residual risk, skipped verification, or incomplete setup, the audio must mention it or boundary_awareness cannot exceed 3.
+- Do not award a pass just because the audio is fluent. The transcript must demonstrate useful operational boundaries and the requested standup question/answer shape.
 
 Source trace:
 {trace[-MAX_TRACE_CHARS:]}
@@ -589,14 +614,24 @@ Speech-to-text transcript of final audio:
         },
     )
     result = parse_json_text(response_text(payload))
-    if not isinstance(result.get("pass"), bool):
-        scores = result.get("scores", {})
-        result["pass"] = bool(
-            isinstance(scores, dict)
-            and scores.get("faithfulness", 0) >= 4
-            and scores.get("coverage", 0) >= 4
-        )
+    scores = result.get("scores", {})
+    score_gate_pass = bool(isinstance(scores, dict) and infer_eval_pass(scores))
+    if isinstance(result.get("pass"), bool):
+        result["pass"] = bool(result["pass"] and score_gate_pass)
+    else:
+        result["pass"] = score_gate_pass
     return result
+
+
+def feedback_for_next_iteration(result: dict[str, Any], passed_before_minimum: bool = False) -> str:
+    feedback = dict(result)
+    if passed_before_minimum:
+        feedback["forced_iteration_reason"] = (
+            "The previous version passed, but the development loop is running another "
+            "iteration to probe style and boundary stability. Keep the faithful parts, "
+            "then improve any weak standup-format or boundary-awareness details."
+        )
+    return json.dumps(feedback, ensure_ascii=False)
 
 
 def command_draft(args: argparse.Namespace) -> None:
@@ -661,10 +696,15 @@ def command_run(args: argparse.Namespace) -> None:
 
 
 def command_dev_run(args: argparse.Namespace) -> None:
+    if args.iterations < 1:
+        raise ValueError("--iterations must be at least 1.")
+    if args.min_iterations < 1:
+        raise ValueError("--min-iterations must be at least 1.")
     trace = read_text(args.trace)
     out_dir = Path(args.out_dir)
     feedback = ""
     final_result: dict[str, Any] | None = None
+    min_iterations = min(args.min_iterations, args.iterations)
     for iteration in range(1, args.iterations + 1):
         script = draft_script(args, trace, feedback)
         write_json(out_dir / "trace_audio_script.json", script)
@@ -675,9 +715,12 @@ def command_dev_run(args: argparse.Namespace) -> None:
         result["iteration"] = iteration
         write_json(out_dir / "trace_audio_eval.json", result)
         final_result = result
-        if result.get("pass") or iteration == args.iterations:
+        if (result.get("pass") and iteration >= min_iterations) or iteration == args.iterations:
             break
-        feedback = json.dumps(result, ensure_ascii=False)
+        feedback = feedback_for_next_iteration(
+            result,
+            passed_before_minimum=bool(result.get("pass")) and iteration < min_iterations,
+        )
         time.sleep(1)
     print(out_dir / "trace_audio.mp3")
     if final_result is not None:
@@ -751,6 +794,7 @@ def build_parser() -> argparse.ArgumentParser:
     dev_run = subparsers.add_parser("dev-run", help="Development loop: draft, synthesize, transcribe, judge, and iterate.")
     dev_run.add_argument("--trace", default="-")
     dev_run.add_argument("--iterations", type=int, default=2)
+    dev_run.add_argument("--min-iterations", type=int, default=2)
     add_common_args(dev_run)
     dev_run.set_defaults(func=command_dev_run)
 
