@@ -1,6 +1,6 @@
 {
   "name": "agent-playback",
-  "version": "0.1.0",
+  "version": "0.1.0+codex.20260528223723",
   "description": "Turn long-running agent traces into personalized local audio briefings.",
   "author": {
     "name": "detextit"

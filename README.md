@@ -23,6 +23,8 @@ Skill to invoke: `agent-trace-audio`
 
 Primary command: `python3 scripts/trace_audio.py run`
 
+For a current Codex run, use `--trace-session latest` so the plugin reads the full saved JSONL transcript from `~/.codex/sessions` instead of relying on the shortened context summary visible to the agent.
+
 Default output files:
 
 - `trace_audio.mp3`: final local audio briefing
@@ -60,7 +62,7 @@ Generate a local briefing:
 
 ```bash
 python3 scripts/trace_audio.py run \
-  --trace evals/fixtures/sample_trace.md \
+  --trace-session latest \
   --out-dir out/sample-audio \
   --listener "Sarath" \
   --project "agent-playback" \
@@ -70,6 +72,8 @@ python3 scripts/trace_audio.py run \
   --max-segments 4 \
   --segment-concurrency 4
 ```
+
+To generate from a specific saved trace, pass either a markdown file with `--trace path/to/trace.md` or a Codex session JSONL with `--trace path/to/session.jsonl`. Codex session JSONL files are converted to a readable transcript automatically.
 
 Play the generated file:
 
@@ -82,6 +86,7 @@ Use `--keep-intermediates` only when you want per-segment audio files for debugg
 ## What Makes It Useful
 
 - Personalized: pass `--listener`, `--listener-pronunciation`, and `--project`.
+- Full local traces: `--trace-session latest` reads saved Codex sessions from disk, so the briefing can cover the complete transcript rather than the agent's compacted summary.
 - Fast on long traces: compact mode preserves the opening goal, important events, and final state instead of sending a giant raw transcript.
 - Local artifacts: the user gets an MP3 they can replay, share, or archive.
 - Faithful by design: prompts emphasize changed files, commands, tests, blockers, risks, and next steps.
@@ -117,7 +122,7 @@ Draft only:
 
 ```bash
 python3 scripts/trace_audio.py draft \
-  --trace tmp/agent-trace.md \
+  --trace-session latest \
   --out-dir out/trace-audio
 ```
 
@@ -133,7 +138,7 @@ Fallback to request-based speech:
 
 ```bash
 python3 scripts/trace_audio.py run \
-  --trace tmp/agent-trace.md \
+  --trace-session latest \
   --out-dir out/trace-audio \
   --audio-engine speech
 ```

@@ -30,6 +30,9 @@ DEFAULT_STT_MODEL = os.environ.get("TRACECAST_STT_MODEL", "gpt-4o-transcribe")
 DEFAULT_HOST_VOICE = os.environ.get("TRACECAST_HOST_VOICE", "marin")
 DEFAULT_ANALYST_VOICE = os.environ.get("TRACECAST_ANALYST_VOICE", "cedar")
 MAX_TRACE_CHARS = int(os.environ.get("TRACECAST_MAX_TRACE_CHARS", "12000"))
+DEFAULT_SESSION_ROOT = Path(
+    os.environ.get("TRACECAST_SESSION_ROOT", Path.home() / ".codex" / "sessions")
+)
 IMPORTANT_TRACE_RE = re.compile(
     r"("
     r"\berror\b|\bfailed\b|\bfail\b|\bpassed\b|\bpass\b|\btest\b|\blint\b|"
@@ -49,10 +52,128 @@ def require_api_key() -> str:
     return api_key
 
 
-def read_text(path: str | None) -> str:
-    if not path or path == "-":
-        return sys.stdin.read()
-    return Path(path).read_text(encoding="utf-8")
+def text_from_content(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return ""
+    pieces: list[str] = []
+    for item in content:
+        if isinstance(item, str):
+            pieces.append(item)
+        elif isinstance(item, dict):
+            for key in ("text", "input_text", "output_text"):
+                value = item.get(key)
+                if isinstance(value, str):
+                    pieces.append(value)
+                    break
+    return "\n".join(piece for piece in pieces if piece).strip()
+
+
+def format_tool_arguments(arguments: Any) -> str:
+    if not isinstance(arguments, str):
+        return json.dumps(arguments, ensure_ascii=False)
+    try:
+        parsed = json.loads(arguments)
+    except json.JSONDecodeError:
+        return arguments
+    return json.dumps(parsed, indent=2, ensure_ascii=False)
+
+
+def render_codex_session_trace(path: Path) -> str:
+    parts: list[str] = [f"# Codex Session Trace\n\nSource: {path}"]
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            parts.append(f"\n## Unparsed JSONL line {line_number}\n\n{line}")
+            continue
+
+        timestamp = event.get("timestamp")
+        event_type = event.get("type")
+        payload = event.get("payload")
+        if event_type == "session_meta" and isinstance(payload, dict):
+            meta = payload
+            cwd = meta.get("cwd")
+            started = meta.get("timestamp") or timestamp
+            session_id = meta.get("id")
+            parts.append(
+                "\n## Session Metadata\n\n"
+                f"- Session: {session_id}\n"
+                f"- Started: {started}\n"
+                f"- CWD: {cwd}"
+            )
+            continue
+
+        if event_type != "response_item" or not isinstance(payload, dict):
+            continue
+
+        item_type = payload.get("type")
+        if item_type == "message":
+            role = payload.get("role")
+            if role not in {"user", "assistant"}:
+                continue
+            text = text_from_content(payload.get("content"))
+            if text:
+                heading = role.capitalize()
+                parts.append(f"\n## {heading} {timestamp or ''}\n\n{text}".rstrip())
+        elif item_type == "function_call":
+            name = payload.get("name", "tool")
+            arguments = format_tool_arguments(payload.get("arguments", ""))
+            parts.append(f"\n## Tool Call: {name} {timestamp or ''}\n\n```json\n{arguments}\n```".rstrip())
+        elif item_type == "function_call_output":
+            output = payload.get("output")
+            if isinstance(output, str) and output.strip():
+                parts.append(f"\n## Tool Output {timestamp or ''}\n\n```text\n{output}\n```".rstrip())
+
+    return "\n".join(parts).strip() + "\n"
+
+
+def is_codex_session_jsonl(path: Path) -> bool:
+    if path.suffix != ".jsonl":
+        return False
+    try:
+        with path.open(encoding="utf-8") as handle:
+            for line in handle:
+                if not line.strip():
+                    continue
+                event = json.loads(line)
+                return event.get("type") in {"session_meta", "response_item", "event_msg"}
+    except (OSError, json.JSONDecodeError):
+        return False
+    return False
+
+
+def latest_session_path(session_root: Path = DEFAULT_SESSION_ROOT) -> Path:
+    if not session_root.exists():
+        raise FileNotFoundError(f"Codex session directory not found: {session_root}")
+    candidates = [path for path in session_root.rglob("*.jsonl") if path.is_file()]
+    if not candidates:
+        raise FileNotFoundError(f"No Codex session JSONL files found under {session_root}")
+    return max(candidates, key=lambda path: path.stat().st_mtime)
+
+
+def resolve_session_path(spec: str) -> Path:
+    if spec in {"latest", "current"}:
+        return latest_session_path()
+    return Path(spec).expanduser()
+
+
+def read_trace(args: argparse.Namespace) -> str:
+    if getattr(args, "trace_session", None):
+        path = resolve_session_path(args.trace_session)
+        return render_codex_session_trace(path)
+
+    path_arg = getattr(args, "trace", None)
+    if path_arg and path_arg != "-":
+        path = Path(path_arg).expanduser()
+        if is_codex_session_jsonl(path):
+            return render_codex_session_trace(path)
+        return path.read_text(encoding="utf-8")
+
+    return sys.stdin.read()
 
 
 def write_json(path: Path, payload: Any) -> None:
@@ -636,7 +757,7 @@ def feedback_for_next_iteration(result: dict[str, Any], passed_before_minimum: b
 
 def command_draft(args: argparse.Namespace) -> None:
     timings: dict[str, float | int] = {}
-    trace = read_text(args.trace)
+    trace = read_trace(args)
     timings["input_chars"] = len(trace)
     prepared = prepare_trace(args, trace)
     timings["prepared_chars"] = len(prepared)
@@ -663,7 +784,7 @@ def command_speak(args: argparse.Namespace) -> None:
 
 
 def command_eval(args: argparse.Namespace) -> None:
-    trace = read_text(args.trace)
+    trace = read_trace(args)
     script = json.loads(Path(args.script).read_text(encoding="utf-8"))
     transcript = transcribe_audio(args, Path(args.audio))
     out_dir = Path(args.out_dir)
@@ -677,7 +798,7 @@ def command_eval(args: argparse.Namespace) -> None:
 def command_run(args: argparse.Namespace) -> None:
     timings: dict[str, float | int] = {}
     total_start = now()
-    trace = read_text(args.trace)
+    trace = read_trace(args)
     timings["input_chars"] = len(trace)
     prepared = prepare_trace(args, trace)
     timings["prepared_chars"] = len(prepared)
@@ -700,7 +821,7 @@ def command_dev_run(args: argparse.Namespace) -> None:
         raise ValueError("--iterations must be at least 1.")
     if args.min_iterations < 1:
         raise ValueError("--min-iterations must be at least 1.")
-    trace = read_text(args.trace)
+    trace = read_trace(args)
     out_dir = Path(args.out_dir)
     feedback = ""
     final_result: dict[str, Any] | None = None
@@ -749,6 +870,17 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--timings-out")
 
 
+def add_trace_args(parser: argparse.ArgumentParser, required: bool = False) -> None:
+    parser.add_argument("--trace", default=None if required else "-")
+    parser.add_argument(
+        "--trace-session",
+        help=(
+            "Read a Codex session JSONL trace. Use 'latest' for the newest file under "
+            "~/.codex/sessions, or pass an explicit session JSONL path."
+        ),
+    )
+
+
 def write_timings(args: argparse.Namespace, timings: dict[str, float | int]) -> None:
     if not args.timings_out:
         return
@@ -770,7 +902,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     draft = subparsers.add_parser("draft", help="Draft a briefing script JSON.")
-    draft.add_argument("--trace", default="-")
+    add_trace_args(draft)
     add_common_args(draft)
     draft.set_defaults(func=command_draft)
 
@@ -780,19 +912,19 @@ def build_parser() -> argparse.ArgumentParser:
     speak.set_defaults(func=command_speak)
 
     evaluate = subparsers.add_parser("eval", help="Transcribe and judge an existing audio file.")
-    evaluate.add_argument("--trace", required=True)
+    add_trace_args(evaluate, required=True)
     evaluate.add_argument("--script", required=True)
     evaluate.add_argument("--audio", required=True)
     add_common_args(evaluate)
     evaluate.set_defaults(func=command_eval)
 
     run = subparsers.add_parser("run", help="Draft and synthesize a local audio briefing.")
-    run.add_argument("--trace", default="-")
+    add_trace_args(run)
     add_common_args(run)
     run.set_defaults(func=command_run)
 
     dev_run = subparsers.add_parser("dev-run", help="Development loop: draft, synthesize, transcribe, judge, and iterate.")
-    dev_run.add_argument("--trace", default="-")
+    add_trace_args(dev_run)
     dev_run.add_argument("--iterations", type=int, default=2)
     dev_run.add_argument("--min-iterations", type=int, default=2)
     add_common_args(dev_run)

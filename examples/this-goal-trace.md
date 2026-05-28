@@ -8,7 +8,7 @@ Repository state:
 
 - Working directory: `/Users/sarath/Github/misc/report-plugin`
 - The directory was empty and was not a Git repository.
-- The plugin was scaffolded directly into the current folder as `report-plugin` so the manifest name matches the outer folder.
+- The plugin is named `agent-playback` to match the GitHub repository and public package identity.
 
 Official docs consulted:
 
@@ -19,7 +19,7 @@ Official docs consulted:
 
 Files created or changed:
 
-- `.codex-plugin/plugin.json`: updated plugin metadata for Agent Trace Audio.
+- `.codex-plugin/plugin.json`: updated plugin metadata for Agent Playback.
 - `skills/agent-trace-audio/SKILL.md`: added the Codex skill workflow for trace audio briefings.
 - `scripts/trace_audio.py`: added a CLI that drafts a two-speaker briefing, synthesizes MP3 audio, transcribes it, judges it, and iterates when needed.
 - `scripts/realtime_tts.mjs`: added a Realtime WebSocket helper that uses `gpt-realtime-2`, buffers `response.output_audio.delta`, and writes PCM audio for local MP3 conversion.
@@ -46,14 +46,14 @@ Verification completed:
 - `node --check scripts/realtime_tts.mjs` passed.
 - The plugin validator initially failed because the local system Python lacked `PyYAML`.
 - A throwaway virtualenv at `/tmp/report-plugin-validate-venv` was created, `PyYAML` was installed there, and plugin validation passed with `/Users/sarath/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py`.
-- A live end-to-end run was executed with `python3 scripts/trace_audio.py run --trace examples/this-goal-trace.md --out-dir out/this-goal-run --listener Sarath --project report-plugin --duration-seconds 45`.
+- A live end-to-end run was executed with `python3 scripts/trace_audio.py run --trace examples/this-goal-trace.md --out-dir out/this-goal-run --listener Sarath --project agent-playback --duration-seconds 45`.
 - The normal live run produced `out/this-goal-run/trace_audio.mp3` and `trace_audio_script.json`.
 - The first live judge result passed on iteration 1 with scores of 5 for faithfulness, coverage, clarity, personalization, and actionability.
-- A live Realtime end-to-end run was executed with `python3 scripts/trace_audio.py run --trace examples/this-goal-trace.md --out-dir out/this-goal-run-realtime --listener 'you' --project report-plugin --duration-seconds 35`.
+- A live Realtime end-to-end run was executed with `python3 scripts/trace_audio.py run --trace examples/this-goal-trace.md --out-dir out/this-goal-run-realtime --listener 'you' --project agent-playback --duration-seconds 35`.
 - The Realtime run produced `out/this-goal-run-realtime/trace_audio.mp3` and `trace_audio_script.json`.
 - The Realtime judge result passed on iteration 1 with scores of 5 for faithfulness, coverage, clarity, personalization, and actionability.
 
 Residual risk:
 
-- The current plugin does not automatically scrape Codex's hidden full event log. The skill instructs the agent to gather the current conversation and terminal actions into a trace file before running the CLI.
+- The plugin can now read saved Codex session JSONL files from `~/.codex/sessions` with `--trace-session latest`, but users should pass an explicit session path when multiple Codex sessions are active.
 - The generated audio quality depends on access to the configured OpenAI models and on the completeness of the trace the agent provides.

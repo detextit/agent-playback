@@ -18,21 +18,17 @@ Use this skill to turn a long-running agent trace into a local audio file the us
 ## Workflow
 
 1. Gather the trace.
-   - Prefer the current conversation and terminal actions if the user says "this run" or "this thread".
-   - Include concrete file paths, commands, tests, failures, decisions, and unresolved risks.
+   - When the user says "this run", "this thread", or similar, read the saved local Codex session file instead of reconstructing the trace from the agent's current context summary.
+   - Use `--trace-session latest` for the newest session under `~/.codex/sessions`, or pass an explicit `~/.codex/sessions/.../*.jsonl` path.
+   - The CLI converts Codex session JSONL into a transcript and skips bulky system/developer metadata, so the script model sees the actual user messages, assistant messages, tool calls, and tool outputs.
+   - If the user provides a separate trace file, pass it with `--trace`.
    - Do not include secrets, raw API keys, tokens, or unrelated private content.
-2. Save the trace as a markdown file when running locally, for example:
 
-```bash
-mkdir -p tmp
-$EDITOR tmp/agent-trace.md
-```
-
-3. Generate audio:
+2. Generate audio from the current local session:
 
 ```bash
 python3 scripts/trace_audio.py run \
-  --trace tmp/agent-trace.md \
+  --trace-session latest \
   --out-dir out/trace-audio \
   --listener "Sarath" \
   --project "agent-playback" \
@@ -43,16 +39,18 @@ python3 scripts/trace_audio.py run \
   --segment-concurrency 4
 ```
 
+If the trace is already saved as markdown, use `--trace tmp/agent-trace.md`. If you know the exact Codex session path, either use `--trace-session /path/to/session.jsonl` or pass the JSONL file with `--trace`.
+
 Use the request-based Speech API fallback only when Realtime is unavailable:
 
 ```bash
 python3 scripts/trace_audio.py run \
-  --trace tmp/agent-trace.md \
+  --trace-session latest \
   --out-dir out/trace-audio \
   --audio-engine speech
 ```
 
-4. Report the outputs:
+3. Report the outputs:
    - `trace_audio.mp3`: final audio file
    - `trace_audio_script.json`: generated briefing script
 
@@ -78,7 +76,7 @@ Ask for a spoken briefing that feels personal, lively, and operational, not like
 Draft only:
 
 ```bash
-python3 scripts/trace_audio.py draft --trace tmp/agent-trace.md --out-dir out/trace-audio
+python3 scripts/trace_audio.py draft --trace-session latest --out-dir out/trace-audio
 ```
 
 Synthesize a previously drafted script:

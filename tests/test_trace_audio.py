@@ -1,8 +1,19 @@
 import argparse
 import json
+import os
+import tempfile
 import unittest
+from pathlib import Path
 
-from scripts.trace_audio import build_draft_prompt, infer_eval_pass, parse_json_text, validate_script
+from scripts.trace_audio import (
+    build_draft_prompt,
+    infer_eval_pass,
+    latest_session_path,
+    parse_json_text,
+    read_trace,
+    render_codex_session_trace,
+    validate_script,
+)
 
 
 class TraceAudioTests(unittest.TestCase):
@@ -37,6 +48,115 @@ class TraceAudioTests(unittest.TestCase):
         self.assertIn("Do not start with \"this is AI-generated\"", prompt)
         self.assertIn("standup-style question-and-answer", prompt)
         self.assertIn("The host asks short, practical questions", prompt)
+
+    def test_render_codex_session_trace_skips_metadata_instructions(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "session.jsonl"
+            rows = [
+                {
+                    "timestamp": "2026-05-28T01:00:00Z",
+                    "type": "session_meta",
+                    "payload": {
+                        "id": "session-1",
+                        "timestamp": "2026-05-28T01:00:00Z",
+                        "cwd": "/tmp/project",
+                        "base_instructions": {"text": "Do not include this in the trace."},
+                    },
+                },
+                {
+                    "timestamp": "2026-05-28T01:00:01Z",
+                    "type": "response_item",
+                    "payload": {
+                        "type": "message",
+                        "role": "developer",
+                        "content": [{"type": "input_text", "text": "hidden developer text"}],
+                    },
+                },
+                {
+                    "timestamp": "2026-05-28T01:00:02Z",
+                    "type": "response_item",
+                    "payload": {
+                        "type": "message",
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": "Please fix the CSV export."}],
+                    },
+                },
+                {
+                    "timestamp": "2026-05-28T01:00:03Z",
+                    "type": "response_item",
+                    "payload": {
+                        "type": "function_call",
+                        "name": "exec_command",
+                        "arguments": json.dumps({"cmd": "pytest tests/test_csv.py"}),
+                    },
+                },
+                {
+                    "timestamp": "2026-05-28T01:00:04Z",
+                    "type": "response_item",
+                    "payload": {
+                        "type": "function_call_output",
+                        "call_id": "call-1",
+                        "output": "2 passed",
+                    },
+                },
+                {
+                    "timestamp": "2026-05-28T01:00:05Z",
+                    "type": "response_item",
+                    "payload": {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": "CSV export is fixed."}],
+                    },
+                },
+            ]
+            path.write_text("\n".join(json.dumps(row) for row in rows), encoding="utf-8")
+
+            trace = render_codex_session_trace(path)
+
+        self.assertIn("Please fix the CSV export.", trace)
+        self.assertIn("pytest tests/test_csv.py", trace)
+        self.assertIn("2 passed", trace)
+        self.assertIn("CSV export is fixed.", trace)
+        self.assertNotIn("Do not include this", trace)
+        self.assertNotIn("hidden developer text", trace)
+
+    def test_read_trace_auto_converts_codex_session_jsonl(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "session.jsonl"
+            path.write_text(
+                json.dumps(
+                    {
+                        "timestamp": "2026-05-28T01:00:00Z",
+                        "type": "response_item",
+                        "payload": {
+                            "type": "message",
+                            "role": "user",
+                            "content": [{"type": "input_text", "text": "Full local transcript"}],
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            args = argparse.Namespace(trace=str(path), trace_session=None)
+
+            trace = read_trace(args)
+
+        self.assertIn("Full local transcript", trace)
+
+    def test_latest_session_path_uses_newest_jsonl(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            older = root / "2026" / "05" / "27" / "older.jsonl"
+            newer = root / "2026" / "05" / "28" / "newer.jsonl"
+            older.parent.mkdir(parents=True)
+            newer.parent.mkdir(parents=True)
+            older.write_text("{}", encoding="utf-8")
+            newer.write_text("{}", encoding="utf-8")
+            os.utime(older, (1, 1))
+            os.utime(newer, (2, 2))
+
+            self.assertEqual(latest_session_path(root), newer)
 
     def test_eval_pass_requires_standup_format_and_boundaries(self):
         self.assertFalse(
