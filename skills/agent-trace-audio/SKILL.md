@@ -5,7 +5,7 @@ description: Create a personalized local audio briefing that explains an agent's
 
 # Agent Trace Audio
 
-Use this skill to turn a long-running agent trace into a local audio file the user can play. The result should feel like a short standup checkpoint: one voice asks focused questions, another explains the work done, and the conversation stays concrete and faithful to what happened.
+Use this skill to turn a long-running agent trace into a local audio file the user can play. The result should feel like a concise audio report: one voice anchors the update, another explains the work done, and the conversation stays concrete and faithful to what happened.
 
 ## Requirements
 
@@ -30,7 +30,7 @@ Use this skill to turn a long-running agent trace into a local audio file the us
 python3 scripts/trace_audio.py run \
   --trace-session latest \
   --out-dir out/trace-audio \
-  --listener "Sarath" \
+  --listener "you" \
   --project "agent-playback" \
   --duration-seconds 90 \
   --trace-mode compact \
@@ -60,15 +60,15 @@ For long traces, prefer compact mode. It keeps the opening goal, salient events 
 
 ## Briefing Shape
 
-Ask for a spoken briefing that feels personal, lively, and operational, not like a generic meeting summary or podcast segment. The best output:
+Ask for a spoken briefing that feels useful, lively, and operational, not like a generic meeting summary or podcast segment. The best output:
 
-- starts with a direct question about what happened
+- starts with a direct report of the goal and outcome, not a question or the listener's name
 - names the user's goal and the project
 - explains the important decisions and why they were made
 - separates completed work from attempted or blocked work
 - mentions verification, test results, and residual risk
 - avoids dumping low-level logs unless they explain an outcome
-- uses a standup rhythm: short questions from the lead, substantive answers from the engineer
+- uses a report rhythm: short framing from the host, substantive updates from the engineer
 - ends with concrete next steps or a satisfying wrap-up
 
 ## Useful Commands

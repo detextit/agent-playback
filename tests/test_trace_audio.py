@@ -33,8 +33,8 @@ class TraceAudioTests(unittest.TestCase):
 
     def test_prompt_includes_trace_and_listener(self):
         args = argparse.Namespace(
-            listener="Sarath",
-            listener_pronunciation="SAR-uth",
+            listener="you",
+            listener_pronunciation="",
             project="agent-playback",
             duration_seconds=60,
             trace_budget_chars=45000,
@@ -42,12 +42,12 @@ class TraceAudioTests(unittest.TestCase):
             max_segments=4,
         )
         prompt = build_draft_prompt(args, "Ran tests and generated audio.")
-        self.assertIn("Sarath", prompt)
+        self.assertIn("you", prompt)
         self.assertIn("agent-playback", prompt)
         self.assertIn("Ran tests and generated audio.", prompt)
-        self.assertIn("Do not start with \"this is AI-generated\"", prompt)
-        self.assertIn("standup-style question-and-answer", prompt)
-        self.assertIn("The host asks short, practical questions", prompt)
+        self.assertIn("Do not open with a question", prompt)
+        self.assertIn("concise trace audio report", prompt)
+        self.assertIn("The host sets context", prompt)
 
     def test_render_codex_session_trace_skips_metadata_instructions(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -158,7 +158,7 @@ class TraceAudioTests(unittest.TestCase):
 
             self.assertEqual(latest_session_path(root), newer)
 
-    def test_eval_pass_requires_standup_format_and_boundaries(self):
+    def test_eval_pass_requires_report_structure_and_boundaries(self):
         self.assertFalse(
             infer_eval_pass(
                 {
@@ -167,7 +167,7 @@ class TraceAudioTests(unittest.TestCase):
                     "clarity": 5,
                     "personalization": 5,
                     "actionability": 5,
-                    "standup_format": 3,
+                    "report_structure": 3,
                     "boundary_awareness": 5,
                 }
             )
@@ -180,7 +180,7 @@ class TraceAudioTests(unittest.TestCase):
                     "clarity": 5,
                     "personalization": 5,
                     "actionability": 5,
-                    "standup_format": 5,
+                    "report_structure": 5,
                     "boundary_awareness": 3,
                 }
             )
@@ -193,7 +193,7 @@ class TraceAudioTests(unittest.TestCase):
                     "clarity": 4,
                     "personalization": 4,
                     "actionability": 4,
-                    "standup_format": 4,
+                    "report_structure": 4,
                     "boundary_awareness": 4,
                 }
             )

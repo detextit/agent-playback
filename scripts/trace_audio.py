@@ -371,7 +371,7 @@ Create a concise audio briefing script for an agent working trace.
 Listener: {args.listener}
 Project: {args.project}
 Target duration: {args.duration_seconds} seconds
-Mode: standup-style question-and-answer briefing
+Mode: concise trace audio report
 {pronunciation}
 
 Return only JSON with this shape:
@@ -389,15 +389,16 @@ Return only JSON with this shape:
 
 Rules:
 - Use at most {args.max_segments} briefing segments total.
-- Treat `host` as the standup lead. The host asks short, practical questions and does not summarize the work at length.
+- Treat `host` as the report anchor. The host sets context, transitions between sections, and keeps the report moving.
 - Treat `analyst` as the engineer who did the work. The analyst gives most of the substance: what was done, what changed, verification, and remaining risk.
 - Aim for roughly 65-80 percent of spoken words from the analyst and 20-35 percent from the host.
-- Open with a direct standup question about the work. Do not start with "this is AI-generated" or any compliance-style disclaimer.
+- Open with a direct declarative report of the goal and outcome. Do not open with a question, the listener's name, "this is AI-generated", or any compliance-style disclaimer.
 - Explain what the user asked for, what the agent did, what changed, what was tested, and what remains.
 - Be faithful to the trace. Do not invent completed work, files, test results, or external facts.
-- Make it personal to the listener and project.
-- Make the format useful and attractive as a standup checkpoint: crisp questions, concrete answers, no podcast banter, no host monologues, no theatrical setup.
+- Make it relevant to the listener and project, but avoid forced name drops.
+- Make the format useful as an audio report: clear opening, concrete progress, verification, boundaries, and next steps. Avoid podcast banter, theatrical setup, and interview-style question loops.
 - The Listener field is the only approved spoken listener label. If Listener is "the user" or "you", do not infer or say a personal name from the trace.
+- If the Listener field is a personal name, use it sparingly and never as the first word or the opening hook.
 - Use natural speech. Avoid markdown, bullets, code fences, and long file dumps in spoken lines.
 - Include concrete file names and commands only when they matter to understanding the outcome.
 - Do not infer that multiple eval iterations ran from a command's `--iterations` limit. Only state an iteration count when the trace reports the actual result.
@@ -420,8 +421,8 @@ def draft_script(args: argparse.Namespace, trace: str, feedback: str = "") -> di
             "instructions": (
                 "You turn coding-agent work traces into accurate, compact, spoken audio "
                 "briefings. You optimize for faithfulness, listener usefulness, and "
-                "a standup-style exchange where one voice asks focused questions and "
-                "the other explains the work that was done."
+                "a report format where one voice anchors the narrative and the other "
+                "explains the work that was done."
             ),
             "input": build_draft_prompt(args, trace, feedback),
             "temperature": 0.4,
@@ -460,8 +461,8 @@ def instructions_for_segment(segment: dict[str, str], args: argparse.Namespace) 
         )
     if segment["speaker"] == "host":
         return (
-            "Sound like a practical standup lead: concise, curious, and direct. "
-            "Ask focused questions; do not turn the segment into a podcast monologue." + pronunciation
+            "Sound like a practical report anchor: concise, clear, and direct. "
+            "Frame the update without forced questions or podcast-style setup." + pronunciation
         )
     return (
         "Sound like the engineer who did the work: concrete, calm, and precise. "
@@ -661,13 +662,14 @@ def transcribe_audio(args: argparse.Namespace, audio_path: Path) -> str:
 
 
 def infer_eval_pass(scores: dict[str, Any]) -> bool:
+    structure_score = scores.get("report_structure", 0)
     required = (
-        "faithfulness",
-        "coverage",
-        "standup_format",
-        "boundary_awareness",
+        scores.get("faithfulness", 0),
+        scores.get("coverage", 0),
+        structure_score,
+        scores.get("boundary_awareness", 0),
     )
-    if not all(scores.get(name, 0) >= 4 for name in required):
+    if not all(score >= 4 for score in required):
         return False
     return all(value >= 3 for value in scores.values() if isinstance(value, (int, float)))
 
@@ -689,7 +691,7 @@ Return only JSON:
     "clarity": 1,
     "personalization": 1,
     "actionability": 1,
-    "standup_format": 1,
+    "report_structure": 1,
     "boundary_awareness": 1
   }},
   "missing_or_wrong": ["specific issues"],
@@ -700,16 +702,16 @@ Return only JSON:
 
 Scoring:
 - 5 is excellent, 4 is good, 3 is acceptable but needs revision, 1-2 fails.
-- Fail if faithfulness, coverage, standup_format, or boundary_awareness is below 4.
+- Fail if faithfulness, coverage, report_structure, or boundary_awareness is below 4.
 - Fail if any other score is below 3.
 - Coverage should reward goal, actions, changes, verification, blockers, and next steps.
 - Faithfulness should penalize invented files, tests, claims, or outcomes.
-- Standup format should reward a clear split where one voice asks short questions and the other voice reports the work done. Penalize podcast-style banter, co-host riffing, long host summaries, or a monologue with speaker labels.
+- Report structure should reward a clear audio report: declarative opening, goal, progress, changes, verification, boundaries, and next steps. Penalize opening with a question, forced use of the listener's name, podcast-style banter, interview loops, co-host riffing, long host monologues, or a monologue with speaker labels.
 - Boundary awareness should reward explicit treatment of failed checks, untested paths, residual risks, missing evidence, and current setup limits. Penalize confident wrap-ups that hide uncertainty.
-- If the transcript appears to omit or substitute the expected listener name, mention it under missing_or_wrong and cap personalization at 4 unless the rest of the personalization is excellent.
+- If the transcript opens with the expected listener name, mention it under missing_or_wrong and cap report_structure at 3.
 - Compare iteration counts exactly. Fail faithfulness if the audio says a different actual iteration count than the trace or eval artifacts report.
 - If the source trace includes a failure, blocker, residual risk, skipped verification, or incomplete setup, the audio must mention it or boundary_awareness cannot exceed 3.
-- Do not award a pass just because the audio is fluent. The transcript must demonstrate useful operational boundaries and the requested standup question/answer shape.
+- Do not award a pass just because the audio is fluent. The transcript must demonstrate useful operational boundaries and a coherent trace-report shape.
 
 Source trace:
 {trace[-MAX_TRACE_CHARS:]}
@@ -750,7 +752,7 @@ def feedback_for_next_iteration(result: dict[str, Any], passed_before_minimum: b
         feedback["forced_iteration_reason"] = (
             "The previous version passed, but the development loop is running another "
             "iteration to probe style and boundary stability. Keep the faithful parts, "
-            "then improve any weak standup-format or boundary-awareness details."
+            "then improve any weak report-structure or boundary-awareness details."
         )
     return json.dumps(feedback, ensure_ascii=False)
 
@@ -850,7 +852,7 @@ def command_dev_run(args: argparse.Namespace) -> None:
 
 def add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--out-dir", default="out/trace-audio")
-    parser.add_argument("--listener", default=os.environ.get("USER", "the user"))
+    parser.add_argument("--listener", default="you")
     parser.add_argument("--listener-pronunciation", default=os.environ.get("TRACECAST_LISTENER_PRONUNCIATION", ""))
     parser.add_argument("--project", default=Path.cwd().name)
     parser.add_argument("--duration-seconds", type=int, default=90)

@@ -2,7 +2,7 @@
 
 Agent Playback is a Codex plugin that turns a long-running coding-agent trace into a personalized local audio briefing. It is for the moment when an agent has been working for 20 minutes, the chat is huge, and you want to press play instead of excavating the conversation.
 
-Think NotebookLM for agent traces, shaped like a standup checkpoint: one voice asks focused questions and the other explains the goal, what changed, what was tested, what failed, and what still needs attention. The plugin uses OpenAI Realtime text-to-speech by default and writes a playable MP3 locally.
+Think NotebookLM for agent traces, shaped like an audio report: one voice anchors the update and the other explains the goal, what changed, what was tested, what failed, and what still needs attention. The plugin uses OpenAI Realtime text-to-speech by default and writes a playable MP3 locally.
 
 ## Agent Search Keywords
 
@@ -64,7 +64,7 @@ Generate a local briefing:
 python3 scripts/trace_audio.py run \
   --trace-session latest \
   --out-dir out/sample-audio \
-  --listener "Sarath" \
+  --listener "you" \
   --project "agent-playback" \
   --duration-seconds 45 \
   --trace-mode compact \
@@ -90,7 +90,7 @@ Use `--keep-intermediates` only when you want per-segment audio files for debugg
 - Fast on long traces: compact mode preserves the opening goal, important events, and final state instead of sending a giant raw transcript.
 - Local artifacts: the user gets an MP3 they can replay, share, or archive.
 - Faithful by design: prompts emphasize changed files, commands, tests, blockers, risks, and next steps.
-- Standup-style by default: the lead asks concise questions, the engineer gives the substantive update, and the script avoids podcast banter.
+- Report-style by default: the host frames the update, the engineer gives the substantive detail, and the script avoids forced questions, name-drop openings, and podcast banter.
 
 ## Model Choices
 
@@ -151,7 +151,7 @@ The user-facing plugin workflow does not run evals. During development, use the 
 python3 scripts/trace_audio.py dev-run \
   --trace evals/fixtures/sample_trace.md \
   --out-dir out/sample-eval \
-  --listener "Sarath" \
+  --listener "you" \
   --project "agent-playback" \
   --duration-seconds 45 \
   --min-iterations 2 \
@@ -162,7 +162,7 @@ Development evals use:
 
 - Speech-to-text: `gpt-4o-transcribe`
 - LLM judge: `gpt-4.1`
-- A strict rubric for faithfulness, coverage, standup question/answer shape, and boundary awareness.
+- A strict rubric for faithfulness, coverage, report structure, and boundary awareness.
 - `dev-run` defaults to at least two iterations when `--iterations` allows it, even if the first judge result passes, so development runs can catch unstable prompt behavior instead of stopping after one easy pass.
 
 All models can be overridden with environment variables or CLI flags.
