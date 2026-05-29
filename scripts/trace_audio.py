@@ -23,7 +23,7 @@ from typing import Any
 API_BASE = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
 DEFAULT_SCRIPT_MODEL = os.environ.get("TRACECAST_SCRIPT_MODEL", "gpt-4.1-mini")
 DEFAULT_JUDGE_MODEL = os.environ.get("TRACECAST_JUDGE_MODEL", "gpt-4.1")
-DEFAULT_AUDIO_ENGINE = os.environ.get("TRACECAST_AUDIO_ENGINE", "realtime")
+DEFAULT_AUDIO_ENGINE = os.environ.get("TRACECAST_AUDIO_ENGINE", "speech")
 DEFAULT_REALTIME_MODEL = os.environ.get("TRACECAST_REALTIME_MODEL", "gpt-realtime-2")
 DEFAULT_TTS_MODEL = os.environ.get("TRACECAST_TTS_MODEL", "gpt-4o-mini-tts")
 DEFAULT_STT_MODEL = os.environ.get("TRACECAST_STT_MODEL", "gpt-4o-transcribe")

@@ -10,21 +10,55 @@ Use this skill to turn a long-running agent trace into a local audio file the us
 ## Requirements
 
 - `OPENAI_API_KEY` must be set in the shell environment.
-- Run `npm install` once from the plugin root so the Realtime WebSocket helper can use the `ws` package.
-- The default implementation uses the OpenAI Realtime API with `gpt-realtime-2`. It connects over WebSocket, listens for `response.output_audio.delta`, buffers `pcm16` chunks, and converts them to MP3 locally.
-- The CLI uses `gpt-realtime-2` for speech.
-- `ffmpeg` is required for the default Realtime path because Realtime emits raw PCM audio that must be converted to MP3. With `--audio-engine speech`, `ffmpeg` is only needed when combining multiple MP3 segments cleanly.
+- The default implementation uses the OpenAI Speech API with `gpt-4o-mini-tts`.
+- The CLI sends only each approved briefing segment to text-to-speech when using `speak`.
+- `ffmpeg` is needed only when combining multiple MP3 segments cleanly. If `ffmpeg` is unavailable, the CLI writes a simple byte-concatenated MP3 fallback.
+- Run `npm install` only when using the optional Realtime WebSocket engine, because the helper needs the `ws` package.
 
 ## Workflow
 
 1. Gather the trace.
-   - When the user says "this run", "this thread", or similar, read the saved local Codex session file instead of reconstructing the trace from the agent's current context summary.
-   - Use `--trace-session latest` for the newest session under `~/.codex/sessions`, or pass an explicit `~/.codex/sessions/.../*.jsonl` path.
+   - Prefer the agent's current working context and tool history to produce a short narration script yourself.
+   - Do not send a saved Codex session JSONL or raw workspace trace to an external API unless the user explicitly approves that export.
+   - Do not include secrets, raw API keys, tokens, or unrelated private content.
+
+2. Write an inspectable script JSON locally. Use this shape:
+
+```json
+{
+  "title": "short title",
+  "listener": "you",
+  "project": "agent-playback",
+  "duration_target_seconds": 90,
+  "briefing": [
+    {"speaker": "host", "text": "Brief opening line."},
+    {"speaker": "analyst", "text": "Concrete summary of the work, verification, and remaining risk."}
+  ],
+  "coverage_notes": ["facts intentionally covered"]
+}
+```
+
+3. Synthesize audio from that script:
+
+```bash
+python3 scripts/trace_audio.py speak \
+  --script out/trace-audio/trace_audio_script.json \
+  --out-dir out/trace-audio \
+  --listener "you" \
+  --project "agent-playback" \
+  --duration-seconds 90 \
+  --segment-concurrency 4
+```
+
+This sends only the spoken briefing segment text to the audio API. It does not send the raw trace.
+
+4. Use trace-backed drafting only with explicit approval.
+   - When approved, `--trace-session latest` reads the newest session under `~/.codex/sessions`, or an explicit `~/.codex/sessions/.../*.jsonl` path.
    - The CLI converts Codex session JSONL into a transcript and skips bulky system/developer metadata, so the script model sees the actual user messages, assistant messages, tool calls, and tool outputs.
    - If the user provides a separate trace file, pass it with `--trace`.
    - Do not include secrets, raw API keys, tokens, or unrelated private content.
 
-2. Generate audio from the current local session:
+Trace-backed command:
 
 ```bash
 python3 scripts/trace_audio.py run \
@@ -41,16 +75,16 @@ python3 scripts/trace_audio.py run \
 
 If the trace is already saved as markdown, use `--trace tmp/agent-trace.md`. If you know the exact Codex session path, either use `--trace-session /path/to/session.jsonl` or pass the JSONL file with `--trace`.
 
-Use the request-based Speech API fallback only when Realtime is unavailable:
+Use Realtime only when you specifically need live-session behavior rather than script-to-audio synthesis:
 
 ```bash
 python3 scripts/trace_audio.py run \
   --trace-session latest \
   --out-dir out/trace-audio \
-  --audio-engine speech
+  --audio-engine realtime
 ```
 
-3. Report the outputs:
+5. Report the outputs:
    - `trace_audio.mp3`: final audio file
    - `trace_audio_script.json`: generated briefing script
 
@@ -78,6 +112,8 @@ Draft only:
 ```bash
 python3 scripts/trace_audio.py draft --trace-session latest --out-dir out/trace-audio
 ```
+
+Requires explicit approval to send the trace-derived prompt to the script model.
 
 Synthesize a previously drafted script:
 
